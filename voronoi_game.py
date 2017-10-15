@@ -1,6 +1,7 @@
 from voronoi_server import VoronoiServer
 
 import time, sys, math, socket
+import numpy as np
 
 class VoronoiGame:
   def __init__(self, num_stones, num_players, grid_size, min_dist, host, port, use_graphic):
@@ -9,16 +10,14 @@ class VoronoiGame:
     self.num_players = num_players
     self.grid_size = grid_size
     self.min_dist = min_dist # minimum distance allowed between stoens
-    self.grid = [[0] * grid_size for i in range(grid_size)]
-    self.score_grid = [[0] * grid_size for i in range(grid_size)]
+    self.grid = np.zeros((grid_size, grid_size), dtype=np.int)
+    self.score_grid = np.zeros((grid_size, grid_size), dtype=np.int)
     self.scores = [0] * num_players
     self.player_times = [120.0] * num_players
     # store moves played, each move corresponds to 3 entries
     self.moves = []
     # gravitational pull, pull[i] is 2d-array of the pull player i has in total
-    self.pull = []
-    for i in range(num_players):
-      self.pull.append([[0] * grid_size for j in range(grid_size)])
+    self.pull = np.zeros((num_players, grid_size, grid_size), dtype=np.float32)
     self.current_player = 0
     self.moves_made = 0
     self.game_over = False
@@ -31,6 +30,11 @@ class VoronoiGame:
     if use_graphic:
       self.graphic_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
       self.graphic_socket.connect(('localhost', 8080))
+
+    self.row_numbers = np.zeros((grid_size, grid_size), dtype=np.float32)
+    for i in range(grid_size):
+      self.row_numbers[i] = self.row_numbers[i] + i
+    self.col_numbers = np.transpose(self.row_numbers)
 
   def __get_game_info(self):
     # game over flag
@@ -103,29 +107,15 @@ class VoronoiGame:
     data = client_response.split()
     return int(data[0]), int(data[1])
 
-  def __update_scores(self, move_row, move_col):
-    # note: score ignores stones, because each player has the same number of stones
-    for row in range(self.grid_size):
-      for col in range(self.grid_size):
-        # avoid division by 0
-        if (row == move_row and col == move_col):
-          continue
-        # update current player's pull
-        d = self.__compute_distance(row, col, move_row, move_col)
-        self.pull[self.current_player][row][col] += float(float(1) / (d*d))
+  def compute_pull(self, row, col):
+    return np.reciprocal(np.square(self.row_numbers - row) + np.square(self.col_numbers - col) + 0.1e-30)
 
-        old_occupier = self.score_grid[row][col]
-        # if the cell has not been claimed by any player
-        if old_occupier == 0:
-          self.score_grid[row][col] = self.current_player + 1
-          self.scores[self.current_player] += 1
-        # if the cell is claimed by some other player
-        elif old_occupier - 1 != self.current_player:
-          # and current player now has a greater pull
-          if self.pull[self.current_player][row][col] > self.pull[old_occupier - 1][row][col]:
-            self.score_grid[row][col] = self.current_player + 1
-            self.scores[old_occupier - 1] -= 1
-            self.scores[self.current_player] += 1
+  def __update_scores(self, move_row, move_col):
+    self.pull[self.current_player] = self.pull[self.current_player] + self.compute_pull(move_row, move_col)
+    self.score_grid = np.argmax(self.pull, axis=0) + 1
+
+    for i in range(self.num_players):
+      self.scores[i] = np.sum(self.score_grid == (i+1))
 
   def __declare_winner(self):
     max_score = -1
