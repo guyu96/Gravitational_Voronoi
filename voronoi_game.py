@@ -119,12 +119,27 @@ class VoronoiGame:
   def __update_scores(self, move_row, move_col):
     # Add pull from new stone to current pull
     self.pull[self.current_player] = self.pull[self.current_player] + self.compute_pull(move_row, move_col)
+    print("New pull for player:")
+    for row in self.pull[self.current_player]:
+        for elem in row:
+            if elem > 2:
+                print('inf.', end=' ')
+            else:
+                print('{:.2f}'.format(elem), end=' ')
+        print()
     # Update each point in the grid to be owned by the player with the highest pull
     self.score_grid = np.argmax(self.pull, axis=0) + 1
+    print("New score grid:")
+    for row in self.score_grid:
+        for elem in row:
+            print(elem, end=' ')
+        print()
 
     # For each player set the score to be the sum of owned squares on the grid
     for i in range(self.num_players):
       self.scores[i] = np.sum(self.score_grid == (i+1))
+    print("New scores:")
+    print(self.scores)
 
   def __declare_winner(self):
     max_score = -1
@@ -180,6 +195,8 @@ class VoronoiGame:
       self.moves.append(move_col)
       self.moves.append(self.current_player + 1)
       self.__update_scores(move_row, move_col)
+      if self.moves_made == 2:
+          break
 
       # send data to node server
       if self.use_graphic:
@@ -199,8 +216,8 @@ class VoronoiGame:
     print("\nGame over")
 
 if __name__ == "__main__":
-  GRID_SIZE = 1000
-  MIN_DIST = 66
+  GRID_SIZE = 20
+  MIN_DIST = 0
   num_stones = int(sys.argv[1])
   num_players = int(sys.argv[2])
   host = sys.argv[3]
